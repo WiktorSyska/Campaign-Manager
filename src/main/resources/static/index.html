@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Campaign Manager</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+<div class="container">
+    <div class="header-row">
+        <div>
+            <h1>Campaign Manager</h1>
+            <div id="account-balance" class="mt-2"></div>
+        </div>
+        <div>
+            <button class="btn btn-primary me-2" id="download-csv">Download CSV</button>
+            <button class="btn btn-success" id="add-campaign">Add Campaign</button>
+        </div>
+    </div>
+
+    <div class="table-container">
+        <table class="table table-striped table-hover">
+            <thead class="table-dark">
+            <tr>
+                <th>ID</th>
+                <th>Campaign Name</th>
+                <th>Bid Amount</th>
+                <th>Fund</th>
+                <th>Status</th>
+                <th>Town</th>
+                <th>Keywords</th>
+                <th>Actions</th>
+            </tr>
+            </thead>
+            <tbody id="campaigns-table-body">
+            <tr>
+                <td colspan="8" class="text-center">Loading data...</td>
+            </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+
+<div class="modal fade" id="campaignModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modalTitle">Add New Campaign</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="modalBody">
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-primary" id="saveCampaign">Save changes</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+<script>
+    // API Base URL
+    const API_BASE = 'http://localhost:8080/api';
+
+    document.addEventListener('DOMContentLoaded', function() {
+        loadCampaigns();
+        loadAccountBalance();
+        setupEventListeners();
+    });
+
+
+    function setupEventListeners() {
+        document.getElementById('add-campaign').addEventListener('click', showAddModal);
+        document.getElementById('download-csv').addEventListener('click', downloadCSV);
+    }
+    function loadAccountBalance() {
+        axios.get(`${API_BASE}/account/balance`)
+            .then(response => {
+                const balance = response.data.data.balance;
+                document.getElementById('account-balance').innerHTML = `
+                <div class="d-flex align-items-center">
+                    <span class="fw-bold me-2">Account Balance:</span>
+                    <span class="badge bg-primary fs-6">$${balance.toFixed(2)}</span>
+                </div>
+            `;
+            })
+            .catch(error => {
+                console.error('Error loading account balance:', error);
+                document.getElementById('account-balance').innerHTML = `
+                <div class="text-danger">Error loading balance</div>
+            `;
+            });
+    }
+
+    function loadCampaigns() {
+        console.log(API_BASE);
+        axios.get(`http://localhost:8080/api/campaigns`)
+            .then(response => {
+                renderCampaignsTable(response.data.data);
+            })
+            .catch(error => {
+                console.error('Error loading campaigns:', error);
+                document.getElementById('campaigns-table-body').innerHTML = `
+                        <tr>
+                            <td colspan="8" class="text-center text-danger">Error loading data. Please try again later.</td>
+                        </tr>
+                    `;
+            });
+    }
+
+    function renderCampaignsTable(campaigns) {
+        const tbody = document.getElementById('campaigns-table-body');
+
+        if (campaigns.length === 0) {
+            tbody.innerHTML = `
+                    <tr>
+                        <td colspan="8" class="text-center">No campaigns found. Create your first campaign!</td>
+                    </tr>
+                `;
+            return;
+        }
+
+        tbody.innerHTML = campaigns.map(campaign => `
+                <tr>
+                    <td>${campaign.id}</td>
+                    <td>${campaign.campaignName}</td>
+                    <td>$${campaign.bidAmount.toFixed(2)}</td>
+                    <td>$${campaign.campaignFund.toFixed(2)}</td>
+                    <td><span class="badge ${campaign.status === 'ON' ? 'bg-success' : 'bg-secondary'}">${campaign.status}</span></td>
+                    <td>${campaign.townName || '<span class="empty-cell">Not specified</span>'}</td>
+                    <td>${campaign.keywordTexts && campaign.keywordTexts.length > 0
+            ? campaign.keywordTexts.join(', ')
+            : '<span class="empty-cell">No keywords</span>'}</td>
+                    <td class="actions-cell">
+                        <button class="btn btn-sm btn-outline-primary me-2" onclick="editCampaign(${campaign.id})">Edit</button>
+                        <button class="btn btn-sm btn-outline-danger" onclick="deleteCampaign(${campaign.id})">Del</button>
+                    </td>
+                </tr>
+            `).join('');
+    }
+
+    function showAddModal() {
+        document.getElementById('modalTitle').textContent = 'Add New Campaign';
+
+        Promise.all([
+            axios.get(`${API_BASE}/towns`),
+            axios.get(`${API_BASE}/keywords`)
+        ]).then(([townsResponse, keywordsResponse]) => {
+            const towns = townsResponse.data.data;
+            const keywords = keywordsResponse.data.data;
+
+            document.getElementById('modalBody').innerHTML = `
+                    <form id="campaignForm">
+                        <div class="mb-3">
+                            <label for="campaignName" class="form-label">Campaign Name *</label>
+                            <input type="text" class="form-control" id="campaignName" required>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="keywords" class="form-label">Keywords *</label>
+                            <select class="form-select" id="keywords" multiple required>
+                                ${keywords.map(kw => `<option value="${kw.id}">${kw.keywordText}</option>`).join('')}
+                            </select>
+                            <div class="form-text">Hold Ctrl to select multiple</div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="bidAmount" class="form-label">Bid Amount *</label>
+                                <input type="number" class="form-control" id="bidAmount" min="0.01" step="0.01" required>
+                            </div>
+
+                            <div class="col-md-6 mb-3">
+                                <label for="campaignFund" class="form-label">Campaign Fund *</label>
+                                <input type="number" class="form-control" id="campaignFund" min="0.01" step="0.01" required>
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="status" class="form-label">Status *</label>
+                                <select class="form-select" id="status" required>
+                                    <option value="ON">ON</option>
+                                    <option value="OFF">OFF</option>
+                                </select>
+                            </div>
+
+                            <div class="col-md-6 mb-3">
+                                <label for="town" class="form-label">Town *</label>
+                                <select class="form-select" id="town" required>
+                                    <option value="">Select town</option>
+                                   ${towns.map(town => `<option value="${town.id}">${town.townName} (${town.postalCode})</option>`).join('')}
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="radius" class="form-label">Radius (km) *</label>
+                            <input type="number" class="form-control" id="radius" min="1" required>
+                        </div>
+                    </form>
+                `;
+
+            const modal = new bootstrap.Modal(document.getElementById('campaignModal'));
+            modal.show();
+
+            const saveBtn = document.getElementById('saveCampaign');
+            saveBtn.onclick = null;
+            saveBtn.addEventListener('click', () => {
+                saveBtn.disabled = true;
+                saveCampaign().finally(() => {
+                    saveBtn.disabled = false;
+                });
+            });
+
+        });
+    }
+
+    function editCampaign(id) {
+        axios.get(`${API_BASE}/campaigns/${id}`)
+            .then(response => {
+                const campaign = response.data.data;
+                document.getElementById('modalTitle').textContent = `Edit Campaign #${id}`;
+
+                Promise.all([
+                    axios.get(`${API_BASE}/towns`),
+                    axios.get(`${API_BASE}/keywords`)
+                ]).then(([townsResponse, keywordsResponse]) => {
+                    const towns = townsResponse.data.data;
+                    const keywords = keywordsResponse.data.data;
+
+                    document.getElementById('modalBody').innerHTML = `
+                            <form id="campaignForm">
+                                <input type="hidden" id="campaignId" value="${campaign.id}">
+
+                                <div class="mb-3">
+                                    <label for="campaignName" class="form-label">Campaign Name *</label>
+                                    <input type="text" class="form-control" id="campaignName" value="${campaign.campaignName}" required>
+                                </div>
+
+                                <div class="mb-3">
+                                    <label for="keywords" class="form-label">Keywords *</label>
+                                    <select class="form-select" id="keywords" multiple required>
+                                        ${keywords.map(kw => `
+                                            <option value="${kw.id}" ${campaign.keywordIds.includes(kw.id) ? 'selected' : ''}>
+                                                ${kw.keywordText}
+                                            </option>
+                                        `).join('')}
+                                    </select>
+                                    <div class="form-text">Hold Ctrl to select multiple</div>
+                                </div>
+
+                                <div class="row">
+                                    <div class="col-md-6 mb-3">
+                                        <label for="bidAmount" class="form-label">Bid Amount *</label>
+                                        <input type="number" class="form-control" id="bidAmount"
+                                            value="${campaign.bidAmount}" min="0.01" step="0.01" required>
+                                    </div>
+
+                                    <div class="col-md-6 mb-3">
+                                        <label for="campaignFund" class="form-label">Campaign Fund *</label>
+                                        <input type="number" class="form-control" id="campaignFund"
+                                            value="${campaign.campaignFund}" min="0.01" step="0.01" required>
+                                    </div>
+                                </div>
+
+                                <div class="row">
+                                    <div class="col-md-6 mb-3">
+                                        <label for="status" class="form-label">Status *</label>
+                                        <select class="form-select" id="status" required>
+                                            <option value="ON" ${campaign.status === 'ON' ? 'selected' : ''}>ON</option>
+                                            <option value="OFF" ${campaign.status === 'OFF' ? 'selected' : ''}>OFF</option>
+                                        </select>
+                                    </div>
+
+                                    <div class="col-md-6 mb-3">
+                                        <label for="town" class="form-label">Town *</label>
+                                        <select class="form-select" id="town" required>
+                                            <option value="">Select town</option>
+                                            ${towns.map(town => `
+                                                <option value="${town.id}" ${campaign.townId === town.id ? 'selected' : ''}>
+                                                    ${town.townName} (${town.postalCode})
+                                                </option>
+                                            `).join('')}
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div class="mb-3">
+                                    <label for="radius" class="form-label">Radius (km) *</label>
+                                    <input type="number" class="form-control" id="radius"
+                                        value="${campaign.radius}" min="1" required>
+                                </div>
+                            </form>
+                        `;
+
+                    const modal = new bootstrap.Modal(document.getElementById('campaignModal'));
+                    modal.show();
+
+                    const saveBtn = document.getElementById('saveCampaign');
+                    saveBtn.onclick = null;
+                    saveBtn.addEventListener('click', () => {
+                        saveBtn.disabled = true;
+                        saveCampaign(id).finally(() => {
+                            saveBtn.disabled = false;
+                        });
+                    });
+                });
+            })
+            .catch(error => {
+                console.error('Error loading campaign:', error);
+                alert('Error loading campaign data');
+            });
+    }
+
+    async function saveCampaign(id) {
+        const form = document.getElementById('campaignForm');
+        if (!form.checkValidity()) {
+            form.reportValidity();
+            return;
+        }
+
+        if (!id) {
+            const campaignIdInput = document.getElementById('campaignId');
+            if (campaignIdInput) {
+                id = campaignIdInput.value;
+            }
+        }
+        try {
+            const selectedKeywords = Array.from(document.getElementById('keywords').selectedOptions)
+                .map(option => option.value);
+
+            const campaignData = {
+                campaignName: document.getElementById('campaignName').value,
+                keywordIds: selectedKeywords,
+                bidAmount: parseFloat(document.getElementById('bidAmount').value),
+                campaignFund: parseFloat(document.getElementById('campaignFund').value),
+                status: document.getElementById('status').value,
+                townId: document.getElementById('town').value,
+                radius: parseInt(document.getElementById('radius').value)
+            };
+
+            const balanceResponse = await axios.get(`${API_BASE}/account/balance`);
+            const currentBalance = balanceResponse.data.data.balance;
+
+            if (id) {
+                const campaignResponse = await axios.get(`${API_BASE}/campaigns/${id}`);
+                const originalFund = campaignResponse.data.data.campaignFund;
+                const fundDifference = campaignData.campaignFund - originalFund;
+
+                if (fundDifference > 0 && fundDifference > currentBalance) {
+                    throw new Error('Insufficient funds for this update');
+                }
+
+
+                await axios.put(`${API_BASE}/campaigns/${id}`, campaignData);
+            } else {
+                if (campaignData.campaignFund > currentBalance) {
+                    throw new Error('Insufficient funds to create this campaign');
+                }
+
+                await axios.post(`${API_BASE}/campaigns`, campaignData);
+            }
+
+            loadCampaigns();
+            loadAccountBalance();
+            bootstrap.Modal.getInstance(document.getElementById('campaignModal')).hide();
+        } catch (error) {
+            if (error.message.includes('Insufficient funds')) {
+                alert('Error: ' + error.message);
+            } else {
+                console.error('Error:', error);
+                alert('Error: ' + (error.response?.data?.message || error.message));
+            }
+        }
+    }
+
+
+
+
+
+    function deleteCampaign(id) {
+        if (confirm('Are you sure you want to delete this campaign?')) {
+            axios.delete(`${API_BASE}/campaigns/${id}`)
+                .then(() => {
+                    loadCampaigns();
+                    loadAccountBalance();
+                })
+                .catch(error => {
+                    console.error('Error deleting campaign:', error);
+                    alert('Error deleting campaign');
+                });
+        }
+    }
+
+    function downloadCSV() {
+        axios.get(`${API_BASE}/campaigns`)
+            .then(response => {
+                const campaigns = response.data.data;
+                let csv = 'ID,Campaign Name,Bid Amount,Fund,Status,Town,Keywords\n';
+
+                campaigns.forEach(campaign => {
+                    csv += `"${campaign.id}","${campaign.campaignName}","${campaign.bidAmount}","${campaign.campaignFund}","${campaign.status}","${campaign.townName || ''}","${campaign.keywordTexts?.join(', ') || ''}"\n`;
+                });
+
+                const blob = new Blob([csv], { type: 'text/csv' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.setAttribute('hidden', '');
+                a.setAttribute('href', url);
+                a.setAttribute('download', 'campaigns.csv');
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+            })
+            .catch(error => {
+                console.error('Error downloading CSV:', error);
+                alert('Error generating CSV file');
+            });
+    }
+
+    window.editCampaign = editCampaign;
+    window.deleteCampaign = deleteCampaign;
+</script>
+</body>
+</html>

@@ -1,0 +1,57 @@
+body {
+    padding: 20px;
+    font-family: Arial, sans-serif;
+}
+.table-container {
+    margin-top: 20px;
+}
+.actions-cell {
+    white-space: nowrap;
+}
+.btn-sm {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.875rem;
+}
+.header-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+}
+.empty-cell {
+    color: #999;
+    font-style: italic;
+}
+
+.card {
+    padding: 20px;
+    margin-bottom: 20px;
+}
+
+.form-group {
+    margin-bottom: 15px;
+}
+
+.typeahead-dropdown {
+    position: absolute;
+    z-index: 1000;
+    width: 100%;
+    max-height: 200px;
+    overflow-y: auto;
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+
+.typeahead-item {
+    padding: 8px 12px;
+    cursor: pointer;
+}
+
+.typeahead-item:hover {
+    background-color: #f8f9fa;
+}
+
+.select2-container {
+    width: 100% !important;
+}
