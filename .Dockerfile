@@ -1,21 +1,14 @@
-FROM openjdk:21-jdk-slim
+FROM maven:3.9.6-openjdk-21-slim AS build
 
 WORKDIR /app
-
-# Kopiuj pliki Maven
 COPY pom.xml .
-COPY mvnw .
-COPY .mvn .mvn
+COPY src ./src
 
-# Pobierz zależności
-RUN ./mvnw dependency:resolve
+RUN mvn clean package -DskipTests
 
-# Kopiuj kod źródłowy
-COPY src src
+FROM openjdk:21-jdk-slim
+WORKDIR /app
+COPY --from=build /app/target/*.jar app.jar
 
-# Zbuduj aplikację
-RUN ./mvnw clean package -DskipTests
-
-# Uruchom aplikację
 EXPOSE 8080
-CMD ["java", "-jar", "target/*.jar"]
+CMD ["java", "-jar", "app.jar"]
